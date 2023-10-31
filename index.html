@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>2台のWebカメラアプリ</title>
+    <style>
+      .camera-container {
+        display: flex;
+        justify-content: space-around;
+      }
+
+      .camera {
+        border: 2px solid transparent;
+        width: 45%;
+      }
+
+      .recording {
+        animation: blinker 1s linear infinite;
+        border: 2px solid red;
+      }
+
+      @keyframes blinker {
+        50% {
+          opacity: 0;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <h1>2台のWebカメラアプリ</h1>
+    <div class="camera-container">
+      <div>
+        <select id="cameraList1"></select>
+        <button id="startButton1">カメラ1を起動</button>
+        <button id="stopButton1" disabled>カメラ1を停止</button>
+        <button id="captureButton1" disabled>カメラ1をキャプチャ</button>
+        <button id="startRecordingButton1" disabled>カメラ1録画開始</button>
+        <button id="stopRecordingButton1" disabled>カメラ1録画停止</button>
+        <video id="video1" autoplay class="camera"></video>
+        <canvas id="canvas1" style="display: none;"></canvas>
+      </div>
+      <div>
+        <select id="cameraList2"></select>
+        <button id="startButton2">カメラ2を起動</button>
+        <button id="stopButton2" disabled>カメラ2を停止</button>
+        <button id="captureButton2" disabled>カメラ2をキャプチャ</button>
+        <button id="startRecordingButton2" disabled>カメラ2録画開始</button>
+        <button id="stopRecordingButton2" disabled>カメラ2録画停止</button>
+        <video id="video2" autoplay class="camera"></video>
+        <canvas id="canvas2" style="display: none;"></canvas>
+      </div>
+    </div>
+
+    <script>
+      let videoStream1;
+      let videoElement1 = document.getElementById("video1");
+      let canvasElement1 = document.getElementById("canvas1");
+      let startButton1 = document.getElementById("startButton1");
+      let stopButton1 = document.getElementById("stopButton1");
+      let captureButton1 = document.getElementById("captureButton1");
+      let startRecordingButton1 = document.getElementById("startRecordingButton1");
+      let stopRecordingButton1 = document.getElementById("stopRecordingButton1");
+      let cameraList1 = document.getElementById("cameraList1");
+      let mediaRecorder1;
+      let recordedChunks1 = [];
+      let isRecording1 = false;
+
+      let videoStream2;
+      let videoElement2 = document.getElementById("video2");
+      let canvasElement2 = document.getElementById("canvas2");
+      let startButton2 = document.getElementById("startButton2");
+      let stopButton2 = document.getElementById("stopButton2");
+      let captureButton2 = document.getElementById("captureButton2");
+      let startRecordingButton2 = document.getElementById("startRecordingButton2");
+      let stopRecordingButton2 = document.getElementById("stopRecordingButton2");
+      let cameraList2 = document.getElementById("cameraList2");
+      let mediaRecorder2;
+      let recordedChunks2 = [];
+      let isRecording2 = false;
+
+      // Webカメラデバイスの情報を取得
+      async function getCameraDevices() {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter((device) => device.kind === "videoinput");
+
+        videoDevices.forEach((device) => {
+          const option1 = document.createElement("option");
+          option1.value = device.deviceId;
+          option1.text = device.label || `カメラ1 ${cameraList1.length + 1}`;
+          cameraList1.appendChild(option1);
+
+          const option2 = document.createElement("option");
+          option2.value = device.deviceId;
+          option2.text = device.label || `カメラ2 ${cameraList2.length + 1}`;
+          cameraList2.appendChild(option2);
+        });
+      }
+
+      getCameraDevices();
+
+      // カメラ1を起動
+      startButton1.addEventListener("click", async () => {
+        const selectedDeviceId = cameraList1.value;
+
+        try {
+          videoStream1 = await navigator.mediaDevices.getUserMedia({
+            video: { deviceId: selectedDeviceId },
+          });
+          videoElement1.srcObject = videoStream1;
+          startButton1.disabled = true;
+          stopButton1.disabled = false;
+          captureButton1.disabled = false;
+          startRecordingButton1.disabled = false;
+        } catch (error) {
+          console.error("カメラ1の起動に失敗しました: " + error);
+        }
+      });
+
+      // カメラ1を停止
+      stopButton1.addEventListener("click", () => {
+        videoStream1.getTracks().forEach((track) => track.stop());
+        videoElement1.srcObject = null;
+        startButton1.disabled = false;
+        stopButton1.disabled = true;
+        captureButton1.disabled = true;
+        startRecordingButton1.disabled = true;
+        stopRecordingButton1.disabled = true;
+        clearInterval(captureInterval1);
+      });
+
+      // 静止画をキャプチャ（カメラ1）
+      captureButton1.addEventListener("click", () => {
+        if (videoStream1) {
+          canvasElement1.width = videoElement1.videoWidth;
+          canvasElement1.height = videoElement1.videoHeight;
+          canvasElement1.getContext("2d").drawImage(videoElement1, 0, 0);
+          let capturedImage = canvasElement1.toDataURL("image/jpeg");
+
+          // 静止画を保存
+          downloadImage(capturedImage);
+        }
+      });
+
+      // 動画の録画を開始（カメラ1）
+      startRecordingButton1.addEventListener("click", () => {
+        if (videoStream1 && !isRecording1) {
+          mediaRecorder1 = new MediaRecorder(videoStream1);
+          mediaRecorder1.ondataavailable = (event) => {
+            if (event.data.size > 0) {
+              recordedChunks1.push(event.data);
+            }
+          };
+          mediaRecorder1.onstop = () => {
+            let blob = new Blob(recordedChunks1, { type: "video/webm" });
+            recordedChunks1 = [];
+            downloadVideo(blob, 1);
+          };
+          mediaRecorder1.start();
+          isRecording1 = true;
+          startRecordingButton1.disabled = true;
+          stopRecordingButton1.disabled = false;
+          videoElement1.classList.add("recording");
+        }
+      });
+
+      // 動画の録画を停止（カメラ1）
+      stopRecordingButton1.addEventListener("click", () => {
+        if (mediaRecorder1 && isRecording1) {
+          mediaRecorder1.stop();
+          isRecording1 = false;
+          startRecordingButton1.disabled = false;
+          stopRecordingButton1.disabled = true;
+          videoElement1.classList.remove("recording");
+        }
+      });
+
+      // カメラ2を起動
+      startButton2.addEventListener("click", async () => {
+        const selectedDeviceId = cameraList2.value;
+
+        try {
+          videoStream2 = await navigator.mediaDevices.getUserMedia({
+            video: { deviceId: selectedDeviceId },
+          });
+          videoElement2.srcObject = videoStream2;
+          startButton2.disabled = true;
+          stopButton2.disabled = false;
+          captureButton2.disabled = false;
+          startRecordingButton2.disabled = false;
+        } catch (error) {
+          console.error("カメラ2の起動に失敗しました: " + error);
+        }
+      });
+
+      // カメラ2を停止
+      stopButton2.addEventListener("click", () => {
+        videoStream2.getTracks().forEach((track) => track.stop());
+        videoElement2.srcObject = null;
+        startButton2.disabled = false;
+        stopButton2.disabled = true;
+        captureButton2.disabled = true;
+        startRecordingButton2.disabled = true;
+        stopRecordingButton2.disabled = true;
+        clearInterval(captureInterval2);
+      });
+
+      // 静止画をキャプチャ（カメラ2）
+      captureButton2.addEventListener("click", () => {
+        if (videoStream2) {
+          canvasElement2.width = videoElement2.videoWidth;
+          canvasElement2.height = videoElement2.videoHeight;
+          canvasElement2.getContext("2d").drawImage(videoElement2, 0, 0);
+          let capturedImage = canvasElement2.toDataURL("image/jpeg");
+
+          // 静止画を保存
+          downloadImage(capturedImage);
+        }
+      });
+
+      // 動画の録画を開始（カメラ2）
+      startRecordingButton2.addEventListener("click", () => {
+        if (videoStream2 && !isRecording2) {
+          mediaRecorder2 = new MediaRecorder(videoStream2);
+          mediaRecorder2.ondataavailable = (event) => {
+            if (event.data.size > 0) {
+              recordedChunks2.push(event.data);
+            }
+          };
+          mediaRecorder2.onstop = () => {
+            let blob = new Blob(recordedChunks2, { type: "video/webm" });
+            recordedChunks2 = [];
+            downloadVideo(blob, 2);
+          };
+          mediaRecorder2.start();
+          isRecording2 = true;
+          startRecordingButton2.disabled = true;
+          stopRecordingButton2.disabled = false;
+          videoElement2.classList.add("recording");
+        }
+      });
+
+      // 動画の録画を停止（カメラ2）
+      stopRecordingButton2.addEventListener("click", () => {
+        if (mediaRecorder2 && isRecording2) {
+          mediaRecorder2.stop();
+          isRecording2 = false;
+          startRecordingButton2.disabled = false;
+          stopRecordingButton2.disabled = true;
+          videoElement2.classList.remove("recording");
+        }
+      });
+
+      // 動画をダウンロード
+      function downloadVideo(videoBlob, cameraNumber) {
+        let url = URL.createObjectURL(videoBlob);
+        let a = document.createElement("a");
+        a.href = url;
+        a.download = `recorded_video_camera${cameraNumber}.webm`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
+
+      // 静止画をダウンロード
+      function downloadImage(imageData) {
+        let a = document.createElement("a");
+        a.href = imageData;
+        a.download = "captured_image.jpg";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
+    </script>
+  </body>
+</html>
